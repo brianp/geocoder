@@ -1,11 +1,24 @@
 require 'geocoder/models/base'
 
+module DataMapper
+  class Property
+    class Distance < ::DataMapper::Property::Float
+      def dump(value)
+        nil
+      end
+    end # class URI
+  end # class Property
+end # module DataMapper
+
 module Geocoder
   module Model
     module DataMapper
       include Base
 
-      def self.included(base); base.extend(self); end
+      def self.included(base)
+        base.extend(self)
+        base.property :distance, ::DataMapper::Property::Distance
+      end
 
       ##
       # Set attribute names and include the Geocoder module.
