@@ -35,13 +35,30 @@ module Geocoder::Store
         #
         def self.near(location, *args)
           latitude, longitude = Geocoder::Calculations.extract_coordinates(location)
+
           if Geocoder::Calculations.coordinates_present?(latitude, longitude)
-            near_scope_options(latitude, longitude, *args)
+            records = []
+            fields = []
+            repository(:default).adapter.send(:with_connection) do |connection|
+              sql = near_scope_options(latitude, longitude, *args)[:select]
+              reader = connection.create_command(sql).execute_reader(*[])
+              fields = properties.field_map.values_at(*reader.fields).compact.push(::DataMapper::Property::String.new(Address, :distance))
+
+              begin
+                while reader.next!
+                  records << Hash[ fields.zip(reader.values) ]
+                end
+              ensure
+                reader.close
+              end
+            end
+
+            query = ::DataMapper::Query.new(repository, self, :reload => false)
+            ::DataMapper::Collection.new(query, query.model.load(records, query))
           else
             all(false_condition) # no results if no lat/lon given
           end
         end
-
 
         ##
         # Find all objects within the area of a given bounding box.
@@ -150,9 +167,9 @@ module Geocoder::Store
         distance = full_distance_from_sql(latitude, longitude, options)
         conditions = ["#{distance} <= ?", radius]
         default_near_scope_options(latitude, longitude, radius, options).merge(
-          :select => "#{options[:select] || full_column_name("*")}, " +
+          :select => "SELECT #{options[:select] || full_column_name("*")}, " +
             "#{distance} AS distance" +
-            (bearing ? ", #{bearing} AS bearing" : ""),
+            (bearing ? ", #{bearing} AS bearing" : "") + " FROM #{storage_name}",
           :conditions => add_exclude_condition(conditions, options[:exclude])
         )
       end
